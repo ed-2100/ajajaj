@@ -1,0 +1,74 @@
+[package]
+name = "ajajaj"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+rp2040-hal = { version = "0.10", features = ["rt", "critical-section-impl"] }
+rp2040-boot2 = "0.3"
+panic-probe = { version = "0.3", features = ["print-rtt"] }
+embedded-hal = "1"
+rtt-target = "0.5"
+rtic = { version = "2", features = ["thumbv6-backend"]}
+rtic-monotonics = { version = "2", features = ["rp2040"] }
+# portable-atomic = { version = "1", features = ["critical-section"] }
+
+# cargo build/run
+[profile.dev]
+codegen-units = 1
+debug = 2
+debug-assertions = true
+incremental = false
+opt-level = "s"
+overflow-checks = true
+split-debuginfo = "unpacked"
+
+# cargo build/run --release
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = "s"
+overflow-checks = false
+split-debuginfo = "unpacked"
+
+# do not optimize proc-macro crates = faster builds from scratch
+[profile.dev.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
+split-debuginfo = "unpacked"
+
+[profile.release.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
+split-debuginfo = "unpacked"
+
+# cargo test
+[profile.test]
+codegen-units = 1
+debug = 2
+debug-assertions = true
+incremental = false
+opt-level = "s"
+overflow-checks = true
+split-debuginfo = "unpacked"
+
+# cargo test --release
+[profile.bench]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = "s"
+split-debuginfo = "unpacked"
