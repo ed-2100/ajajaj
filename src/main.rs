@@ -6,132 +6,128 @@
 pub static BOOT_LOADER: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 use rtic_monotonics::rp2040::prelude::*;
-
 rp2040_timer_monotonic!(Mono);
 
-use rp2040_hal as hal;
+use embassy_rp::{bind_interrupts, i2c, peripherals::I2C1};
+bind_interrupts!(struct Irqs {
+    I2C1_IRQ => i2c::InterruptHandler<I2C1>;
+});
 
-#[rtic::app(device = hal::pac)]
+#[rtic::app(device = embassy_rp, peripherals=true, dispatchers = [SWI_IRQ_0, SWI_IRQ_1, SWI_IRQ_2])]
 mod app {
     use super::*;
 
-    use hal::{
-        clocks,
-        gpio::{
-            self,
-            bank0::{Gpio15, Gpio2, Gpio25, Gpio3},
-            FunctionI2C, FunctionSio, Pin, PullNone, SioOutput,
-        },
-        i2c, pac,
-        sio::Sio,
-        watchdog::Watchdog,
-    };
-
-    use core::mem::MaybeUninit;
-    use embedded_hal::digital::{OutputPin as _, StatefulOutputPin as _};
+    use embassy_rp::{gpio, i2c_slave, peripherals};
     use panic_probe as _;
-
-    type I2CBus = hal::I2C<
-        pac::I2C1,
-        (
-            Pin<Gpio2, FunctionI2C, PullNone>,
-            Pin<Gpio3, FunctionI2C, PullNone>,
-        ),
-        i2c::Peripheral,
-    >;
 
     #[shared]
     struct Shared {}
 
     #[local]
     struct Local {
-        onboard_led: Pin<Gpio25, FunctionSio<SioOutput>, PullNone>,
-        i2c: &'static mut I2CBus,
-        aux_led: Pin<Gpio15, FunctionSio<SioOutput>, PullNone>,
+        onboard_led_pin: peripherals::PIN_25,
+        i2c: i2c_slave::I2cSlave<'static, I2C1>,
+        aux_led_pin: peripherals::PIN_15,
     }
 
-    #[init(local=[
-        i2c_ctx: MaybeUninit<I2CBus> = MaybeUninit::uninit()
-    ])]
-    fn init(mut ctx: init::Context) -> (Shared, Local) {
-        Mono::start(ctx.device.TIMER, &mut ctx.device.RESETS);
+    #[init]
+    fn init(mut cx: init::Context) -> (Shared, Local) {
+        let p = embassy_rp::init(Default::default());
 
-        let mut watchdog = Watchdog::new(ctx.device.WATCHDOG);
+        let mut config = embassy_rp::i2c_slave::Config::default();
+        config.addr = 0x17;
+        config.general_call = false;
+        let i2c = embassy_rp::i2c_slave::I2cSlave::new(p.I2C1, p.PIN_3, p.PIN_2, Irqs, config);
 
-        let _clocks = clocks::init_clocks_and_plls(
-            12_000_000,
-            ctx.device.XOSC,
-            ctx.device.CLOCKS,
-            ctx.device.PLL_SYS,
-            ctx.device.PLL_USB,
-            &mut ctx.device.RESETS,
-            &mut watchdog,
-        )
-        .ok()
-        .unwrap();
+        // SAFETY: The `steal()` method used here is safe, provided that:
+        // We assume that the TIMER peripheral isn't being used by anything else and that RESETS is already properly configured.
+        unsafe {
+            Mono::start(
+                rtic_monotonics::rp2040::TIMER::steal(),
+                &rtic_monotonics::rp2040::RESETS::steal(),
+            );
+        }
 
-        let sio = Sio::new(ctx.device.SIO);
-
-        let gpioa = gpio::Pins::new(
-            ctx.device.IO_BANK0,
-            ctx.device.PADS_BANK0,
-            sio.gpio_bank0,
-            &mut ctx.device.RESETS,
-        );
-
-        let mut onboard_led: Pin<_, FunctionSio<SioOutput>, PullNone> = gpioa.gpio25.reconfigure();
-        let mut aux_led: Pin<_, FunctionSio<SioOutput>, PullNone> = gpioa.gpio15.reconfigure();
-
-        onboard_led.set_high().unwrap();
-        aux_led.set_high().unwrap();
-
-        let sda_pin: Pin<_, FunctionI2C, _> = gpioa.gpio2.reconfigure();
-        let scl_pin: Pin<_, FunctionI2C, _> = gpioa.gpio3.reconfigure();
-
-        let i2c: &'static mut _ = ctx
-            .local
-            .i2c_ctx
-            .write(hal::I2C::new_peripheral_event_iterator(
-                ctx.device.I2C1,
-                sda_pin,
-                scl_pin,
-                &mut ctx.device.RESETS,
-                0x17u8,
-            ));
-
+        on_i2c_event::spawn().ok();
         heartbeat::spawn().ok();
+
+        cx.core.SCB.set_sleepdeep();
 
         (
             Shared {},
             Local {
-                onboard_led,
+                onboard_led_pin: p.PIN_25,
                 i2c,
-                aux_led,
+                aux_led_pin: p.PIN_15,
             },
         )
     }
 
-    #[task(local = [onboard_led])]
-    async fn heartbeat(ctx: heartbeat::Context) {
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
         loop {
-            ctx.local.onboard_led.toggle().unwrap();
-            Mono::delay(1.secs()).await;
+            rtic::export::wfi();
         }
     }
 
-    #[task(local = [i2c, aux_led])]
-    async fn on_i2c_event(ctx: on_i2c_event::Context) {
-        use i2c::peripheral::Event;
+    #[task(local = [onboard_led_pin], priority = 1)]
+    async fn heartbeat(cx: heartbeat::Context) {
+        let mut led = gpio::Output::new(cx.local.onboard_led_pin, gpio::Level::High);
 
         loop {
-            let event = ctx.local.i2c.wait_next().await;
+            Mono::delay(100.millis()).await;
+            led.set_level(match led.get_output_level() {
+                gpio::Level::Low => gpio::Level::High,
+                gpio::Level::High => gpio::Level::Low,
+            });
+        }
+    }
 
-            match event {
-                Event::Start => {}
-                Event::Restart => {}
-                Event::TransferRead => {}
-                Event::TransferWrite => {}
-                Event::Stop => {}
+    #[task(local = [i2c, aux_led_pin], priority = 2)]
+    async fn on_i2c_event(ctx: on_i2c_event::Context) {
+        let mut aux_led = gpio::Output::new(ctx.local.aux_led_pin, gpio::Level::High);
+
+        loop {
+            let mut buf = [0u8; 128];
+
+            match ctx.local.i2c.listen(&mut buf).await {
+                Ok(i2c_slave::Command::GeneralCall(_)) => {}
+                Ok(i2c_slave::Command::Read) => loop {
+                    match ctx
+                        .local
+                        .i2c
+                        .respond_to_read(&[aux_led.get_output_level() as u8])
+                        .await
+                    {
+                        Ok(x) => match x {
+                            i2c_slave::ReadStatus::Done => break,
+                            i2c_slave::ReadStatus::NeedMoreBytes => {}
+                            i2c_slave::ReadStatus::LeftoverBytes(_) => break,
+                        },
+                        Err(_) => {}
+                    }
+                },
+                Ok(i2c_slave::Command::Write(len)) => aux_led.set_level((buf[len - 1] != 0).into()),
+                Ok(i2c_slave::Command::WriteRead(len)) => loop {
+                    match ctx
+                        .local
+                        .i2c
+                        .respond_and_fill(&[aux_led.get_output_level() as u8], 0)
+                        .await
+                    {
+                        Ok(x) => {
+                            aux_led.set_level((buf[len - 1] != 0).into());
+
+                            match x {
+                                i2c_slave::ReadStatus::Done => break,
+                                i2c_slave::ReadStatus::NeedMoreBytes => {}
+                                i2c_slave::ReadStatus::LeftoverBytes(_) => break,
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                },
+                Err(_) => {}
             }
         }
     }

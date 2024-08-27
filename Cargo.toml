@@ -6,14 +6,17 @@ edition = "2021"
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-rp2040-hal = { version = "0.10", features = ["rt", "critical-section-impl"] }
+embassy-rp = { version = "0.2", features = [
+    "critical-section-impl",
+    "boot2-none",
+] }
 rp2040-boot2 = "0.3"
 panic-probe = { version = "0.3", features = ["print-rtt"] }
 embedded-hal = "1"
 rtt-target = "0.5"
-rtic = { version = "2", features = ["thumbv6-backend"]}
+rtic = { version = "2", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2", features = ["rp2040"] }
-# portable-atomic = { version = "1", features = ["critical-section"] }
+portable-atomic = { version = "1", features = ["critical-section"] }
 
 # cargo build/run
 [profile.dev]

@@ -1,4 +1,4 @@
 [toolchain]
-channel = "stable"
+channel = "nightly"
 components = [ "llvm-tools" ]
 targets = [ "thumbv6m-none-eabi" ]
