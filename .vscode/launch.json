@@ -21,7 +21,7 @@
                     "coreIndex": 0,
                     "programBinary": "./target/thumbv6m-none-eabi/debug/${workspaceFolderBasename}",
                     "rttEnabled": true,
-                    "svdFile": "{workspaceFolderBasename}/.vscode/rp2040.svd",
+                    "svdFile": "${workspaceFolder}/.vscode/RP2040.svd",
                 }
             ],
             "env": {
