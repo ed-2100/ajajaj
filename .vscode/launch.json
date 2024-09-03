@@ -37,6 +37,37 @@
                 "type": "cargo",
                 "command": "build"
             }
+        },
+        {
+            "type": "probe-rs-debug",
+            "request": "launch",
+            "name": "probe-rs Release",
+            "cwd": "${workspaceFolder}",
+            "connectUnderReset": false,
+            "chip": "RP2040",
+            "speed": 1000,
+            "flashingConfig": {
+                "flashingEnabled": true,
+                "haltAfterReset": true,
+            },
+            "coreConfigs": [
+                {
+                    "coreIndex": 0,
+                    "programBinary": "./target/thumbv6m-none-eabi/release/${workspaceFolderBasename}",
+                    "rttEnabled": true,
+                    "svdFile": "${workspaceFolder}/.vscode/RP2040.svd",
+                }
+            ],
+            "env": {
+                "DEFMT_LOG": "debug"
+            },
+            "runtimeArgs": [
+                "dap-server"
+            ],
+            "runtimeExecutable": "probe-rs",
+            "wireProtocol": "Swd",
+            "consoleLogLevel": "Info",
+            "preLaunchTask": "cargo build --release"
         }
     ]
 }
