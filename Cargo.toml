@@ -10,7 +10,6 @@ embassy-rp = { version = "0.2", features = [
     "unstable-pac",
     "critical-section-impl",
     "boot2-none",
-    "time-driver",
     "rom-func-cache",
     "intrinsics",
     "rom-v2-intrinsics",
@@ -18,21 +17,13 @@ embassy-rp = { version = "0.2", features = [
 libm = "0.2"
 fixed = "1"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
-embassy-time = "0.3"
+rtic = { version = "*", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2", features = ["rp2040"] }
 rp2040-boot2 = "0.3"
 panic-probe = { version = "0.3", features = ["print-rtt"] }
 embedded-hal = "1"
 rtt-target = "0.5"
 embassy-sync = "0.6"
-embassy-executor = { version = "0.6", features = [
-    "task-arena-size-98304",
-    "arch-cortex-m",
-    "executor-thread",
-    "executor-interrupt",
-    "integrated-timers",
-] }
-# embassy-futures = "0.1"
 embedded-alloc = "0.5"
 critical-section = "1"
 
@@ -62,6 +53,7 @@ split-debuginfo = "unpacked"
 codegen-units = 8
 debug = false
 debug-assertions = false
+incremental = false
 opt-level = 0
 overflow-checks = false
 split-debuginfo = "unpacked"
@@ -70,6 +62,7 @@ split-debuginfo = "unpacked"
 codegen-units = 8
 debug = false
 debug-assertions = false
+incremental = false
 opt-level = 0
 overflow-checks = false
 split-debuginfo = "unpacked"
