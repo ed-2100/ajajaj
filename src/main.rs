@@ -81,9 +81,16 @@ fn set_freq_duty(
     Ok(())
 }
 
-#[rtic::app(device = embassy_rp, dispatchers = [SWI_IRQ_0, SWI_IRQ_1, SWI_IRQ_2])]
+mod pac {
+    pub use embassy_rp::Peripherals;
+    pub use embassy_rp::pac::*;
+}
+
+#[rtic::app(device = crate::pac, dispatchers = [SWI_IRQ_0, SWI_IRQ_1, SWI_IRQ_2])]
 mod app {
+
     use embassy_rp::{
+        clocks::clk_sys_freq,
         gpio::{Level, Output},
         i2c_slave::{self, I2cSlave, ReadStatus},
         peripherals::I2C1,
@@ -92,7 +99,7 @@ mod app {
     use num_traits::Float;
     use panic_probe as _;
     use rtic_monotonics::rp2040::prelude::*;
-    use rtt_target::rprint;
+    use rtt_target::rprintln;
 
     use crate::{set_freq_duty, top_duty_to_comp, Irqs, Mono};
 
@@ -122,6 +129,8 @@ mod app {
             config.addr = 0x17;
             I2cSlave::new(p.I2C1, p.PIN_3, p.PIN_2, Irqs, config)
         };
+
+        cortex_m::asm::delay(clk_sys_freq());
 
         heartbeat::spawn(Output::new(p.PIN_25, Level::High)).ok();
         led_dimmer::spawn(p.PWM_SLICE7, p.PIN_14, p.PIN_15).ok();
@@ -153,8 +162,6 @@ mod app {
             0.25.to_fixed(),
         )
         .unwrap();
-
-        Mono::delay(1.secs()).await;
         let mut led = embassy_rp::pwm::Pwm::new_output_ab(slice, pina, pinb, config.clone());
 
         use core::f32::consts::TAU;
@@ -181,10 +188,12 @@ mod app {
                 Ok(i2c_slave::Command::GeneralCall(_)) => {}
                 Ok(i2c_slave::Command::Read) => loop {
                     match i2c.respond_to_read(&[led.get_output_level() as u8]).await {
-                        Ok(ReadStatus::NeedMoreBytes) => {}
+                        Ok(ReadStatus::NeedMoreBytes) => {
+                            rprintln!("wanted more bytes")
+                        }
                         Ok(_) => break,
                         Err(_) => {
-                            rprint!("error on read")
+                            rprintln!("error on read")
                         }
                     }
                 },
@@ -203,7 +212,7 @@ mod app {
     async fn heartbeat(_: heartbeat::Context, mut led: Output<'static>) {
         for i in 1.. {
             led.toggle();
-            rprint!("{}\n", i);
+            rprintln!("{}", i);
             Mono::delay(1.secs()).await;
         }
     }
