@@ -26,7 +26,7 @@ rtt-target = "0.5"
 # embassy-sync = "0.6"
 # embedded-alloc = "0.5"
 # critical-section = "1"
-# portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
+portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
 
 # cargo build/run
 [profile.dev]

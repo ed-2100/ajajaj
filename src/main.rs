@@ -85,14 +85,13 @@ mod pac {
 
 #[rtic::app(device = crate::pac, dispatchers = [SWI_IRQ_0, SWI_IRQ_1, SWI_IRQ_2])]
 mod app {
-
     use embassy_rp::{
-        clocks::clk_sys_freq,
         gpio::{Level, Output},
         i2c_slave::{self, I2cSlave, ReadStatus},
         peripherals::I2C1,
     };
     use fixed::traits::ToFixed as _;
+    use fugit::Duration;
     use num_traits::Float;
     use rtic_monotonics::rp2040::prelude::*;
     use rtt_target::rprintln;
@@ -100,7 +99,9 @@ mod app {
     use crate::{set_freq_duty, top_duty_to_comp, Irqs, Mono};
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        idle_time: Duration<u64, 1, 1000000>,
+    }
 
     #[local]
     struct Local {}
@@ -133,19 +134,29 @@ mod app {
             I2cSlave::new(p.I2C1, p.PIN_3, p.PIN_2, Irqs, config)
         };
 
-        cortex_m::asm::delay(clk_sys_freq());
-
         heartbeat::spawn(Output::new(p.PIN_25, Level::High)).ok();
         led_dimmer::spawn(p.PWM_SLICE7, p.PIN_14, p.PIN_15).ok();
         on_i2c_event::spawn(Output::new(p.PIN_16, Level::High), dev).ok();
 
-        (Shared {}, Local {})
+        (
+            Shared {
+                idle_time: 0.secs(),
+            },
+            Local {},
+        )
     }
 
-    #[idle]
-    fn idle_function(_: idle_function::Context) -> ! {
+    #[idle(shared = [idle_time])]
+    fn idle_function(mut ctx: idle_function::Context) -> ! {
         loop {
-            cortex_m::asm::wfi();
+            cortex_m::interrupt::free(|_| {
+                ctx.shared.idle_time.lock(|idle_time| {
+                    let before_sleep = Mono::now();
+                    cortex_m::asm::wfi(); // Wait until an interrupt occurs.
+                    let after_sleep = Mono::now();
+                    *idle_time += after_sleep - before_sleep;
+                });
+            }); // Service the interrupt here.
         }
     }
 
@@ -211,11 +222,21 @@ mod app {
         }
     }
 
-    #[task(priority = 1)]
-    async fn heartbeat(_: heartbeat::Context, mut led: Output<'static>) {
+    #[task(priority = 1, shared = [idle_time])]
+    async fn heartbeat(mut ctx: heartbeat::Context, mut led: Output<'static>) {
         for i in 1.. {
             led.toggle();
-            rprintln!("{}", i);
+
+            let idle_time = ctx.shared.idle_time.lock(|x| x.clone()).to_millis(); // Might be able to just deref... not sure..
+            let time_since_epoch = Mono::now().duration_since_epoch().to_millis();
+            let cpu_time = time_since_epoch - idle_time;
+            rprintln!(
+                "{}, {}/{}, {}",
+                i,
+                cpu_time,
+                time_since_epoch,
+                cpu_time as f32 / idle_time as f32
+            );
             Mono::delay(1.secs()).await;
         }
     }
