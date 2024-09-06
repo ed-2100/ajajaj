@@ -5,35 +5,30 @@
 #[used]
 pub static BOOT_LOADER: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
+// extern crate alloc;
+// use embedded_alloc::Heap;
+// #[global_allocator]
+// static HEAP: Heap = Heap::empty();
+
 use panic_probe as _;
 
-use embedded_alloc::Heap;
-
-extern crate alloc;
-use alloc::format;
-
-use embassy_rp::{
-    bind_interrupts, i2c,
-    peripherals::{I2C1, UART0},
-    uart,
-};
-
 use fixed::types::{U16F16, U28F4};
-
 use rtic_monotonics::rp2040::prelude::*;
-
 rp2040_timer_monotonic!(Mono);
 
-#[global_allocator]
-static HEAP: Heap = Heap::empty();
-
+use embassy_rp::{bind_interrupts, i2c, peripherals::I2C1};
 bind_interrupts!(struct Irqs {
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
-    UART0_IRQ => uart::InterruptHandler<UART0>;
 });
 
 const fn top_duty_to_comp(top: u16, duty: U16F16) -> u16 {
     ((((top + 1) as u32) * duty.to_bits()) >> 16) as _
+}
+
+#[derive(Debug)]
+enum SetFreqDutyError {
+    FrequencyTooLow,
+    FrequencyTooHigh,
 }
 
 /// Configures `top`, `divider`, `compare_a`, and `compare_b` given frequency and duty cycles.
@@ -46,7 +41,7 @@ fn set_freq_duty(
     f_pwm: U28F4,
     duty_a: U16F16,
     duty_b: U16F16,
-) -> Result<(), alloc::string::String> {
+) -> Result<(), SetFreqDutyError> {
     let f_pwm_bits = f_pwm.to_bits();
     let f_sys = embassy_rp::clocks::clk_sys_freq();
 
@@ -58,7 +53,8 @@ fn set_freq_duty(
     }
 
     if div > 0xFFF {
-        return Err(format!("{}Hz is too low of a frequency for a sys_clk of {}Hz. Raise sys_clk, or lower the frequency!", f_pwm, f_sys));
+        // format!("{}Hz is too low of a frequency for a sys_clk of {}Hz. Raise sys_clk, or lower the frequency!", f_pwm, f_sys)
+        return Err(SetFreqDutyError::FrequencyTooLow);
     }
 
     let mut top = ((((f_sys as u64) << if config.phase_correct { 7 } else { 8 })
@@ -66,7 +62,8 @@ fn set_freq_duty(
         .saturating_sub(1);
 
     if top == 0 {
-        return Err(format!("{}Hz is too high of a frequency for a sys_clk of {}Hz. Raise sys_clk, or lower the frequency!", f_pwm, f_sys));
+        // format!("{}Hz is too high of a frequency for a sys_clk of {}Hz. Raise sys_clk, or lower the frequency!", f_pwm, f_sys)
+        return Err(SetFreqDutyError::FrequencyTooHigh);
     }
 
     if top > 65534 {
@@ -82,8 +79,8 @@ fn set_freq_duty(
 }
 
 mod pac {
-    pub use embassy_rp::Peripherals;
     pub use embassy_rp::pac::*;
+    pub use embassy_rp::Peripherals;
 }
 
 #[rtic::app(device = crate::pac, dispatchers = [SWI_IRQ_0, SWI_IRQ_1, SWI_IRQ_2])]
@@ -97,7 +94,6 @@ mod app {
     };
     use fixed::traits::ToFixed as _;
     use num_traits::Float;
-    use panic_probe as _;
     use rtic_monotonics::rp2040::prelude::*;
     use rtt_target::rprintln;
 
@@ -120,6 +116,13 @@ mod app {
                 &rtic_monotonics::rp2040::RESETS::steal(),
             );
         }
+
+        // {
+        //     use core::mem::MaybeUninit;
+        //     const HEAP_SIZE: usize = 4096;
+        //     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        //     unsafe { super::HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+        // }
 
         rtt_target::rtt_init_print!();
 

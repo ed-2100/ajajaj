@@ -20,12 +20,13 @@ num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 rtic = { version = "*", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2", features = ["rp2040"] }
 rp2040-boot2 = "0.3"
-panic-probe = { version = "0.3", features = ["print-rtt"] }
-embedded-hal = "1"
+panic-probe = { version = "0.3" } # , features = ["print-rtt"] }
+# embedded-hal = "1"
 rtt-target = "0.5"
-embassy-sync = "0.6"
-embedded-alloc = "0.5"
-critical-section = "1"
+# embassy-sync = "0.6"
+# embedded-alloc = "0.5"
+# critical-section = "1"
+# portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
 
 # cargo build/run
 [profile.dev]
@@ -33,6 +34,7 @@ codegen-units = 1
 debug = 2
 debug-assertions = true
 incremental = false
+lto = 'fat'
 opt-level = "z"
 overflow-checks = true
 split-debuginfo = "unpacked"
@@ -73,6 +75,7 @@ codegen-units = 1
 debug = 2
 debug-assertions = true
 incremental = false
+lto = 'fat'
 opt-level = "z"
 overflow-checks = true
 split-debuginfo = "unpacked"
