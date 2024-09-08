@@ -15,18 +15,20 @@ embassy-rp = { version = "0.2", features = [
     "rom-v2-intrinsics",
 ] }
 libm = "0.2"
-fixed = "1"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
+fixed = "1"
 rtic = { version = "*", features = ["thumbv6-backend"] }
 rtic-monotonics = { version = "2", features = ["rp2040"] }
 rp2040-boot2 = "0.3"
 panic-probe = { version = "0.3" } # , features = ["print-rtt"] }
-# embedded-hal = "1"
 rtt-target = "0.5"
 # embassy-sync = "0.6"
 # embedded-alloc = "0.5"
 # critical-section = "1"
-portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
+# portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
+embedded-hal = "1"
+embedded-hal-async = "1"
+# embedded-hal-bus = {version = "0.2", features = ["async"]}
 
 # cargo build/run
 [profile.dev]

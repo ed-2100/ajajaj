@@ -16,8 +16,12 @@ use fixed::types::{U16F16, U28F4};
 use rtic_monotonics::rp2040::prelude::*;
 rp2040_timer_monotonic!(Mono);
 
-use embassy_rp::{bind_interrupts, i2c, peripherals::I2C1};
+use embassy_rp::{
+    bind_interrupts, i2c,
+    peripherals::{I2C0, I2C1},
+};
 bind_interrupts!(struct Irqs {
+    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ => i2c::InterruptHandler<I2C1>;
 });
 
@@ -78,6 +82,57 @@ fn set_freq_duty(
     Ok(())
 }
 
+/// embedded-hal-bus is actually bad, so I modified the code
+mod rc_i2c_wrapper {
+    use core::cell::RefCell;
+
+    pub struct RefCellDevice<'a, T> {
+        bus: &'a RefCell<T>,
+    }
+    
+    impl<'a, T> RefCellDevice<'a, T> {
+        /// Create a new `RefCellDevice`.
+        pub fn new(bus: &'a RefCell<T>) -> Self {
+            Self { bus }
+        }
+    }
+    
+    impl<'a, T> embedded_hal::i2c::ErrorType for RefCellDevice<'a, T>
+    where
+        T: embedded_hal::i2c::I2c,
+    {
+        type Error = T::Error;
+    }
+    
+    impl<'a, T> embedded_hal::i2c::I2c for RefCellDevice<'a, T>
+    where
+        T: embedded_hal::i2c::I2c,
+    {
+        fn transaction(
+            &mut self,
+            address: u8,
+            operations: &mut [embedded_hal::i2c::Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            let bus = &mut *self.bus.borrow_mut();
+            bus.transaction(address, operations)
+        }
+    }
+
+    impl<'a, T> embedded_hal_async::i2c::I2c for RefCellDevice<'a, T>
+    where
+        T: embedded_hal_async::i2c::I2c + embedded_hal::i2c::I2c,
+    {
+        async fn transaction(
+            &mut self,
+            address: u8,
+            operations: &mut [embedded_hal::i2c::Operation<'_>],
+        ) -> Result<(), Self::Error> {
+            let bus = &mut *self.bus.borrow_mut();
+            embedded_hal_async::i2c::I2c::transaction(bus, address, operations).await
+        }
+    }
+}
+
 mod pac {
     pub use embassy_rp::pac::*;
     pub use embassy_rp::Peripherals;
@@ -106,7 +161,7 @@ mod app {
     #[local]
     struct Local {}
 
-    #[init]
+    #[init()]
     fn init(_: init::Context) -> (Shared, Local) {
         let config = embassy_rp::config::Config::default();
         let p = embassy_rp::init(config);
@@ -134,8 +189,22 @@ mod app {
             I2cSlave::new(p.I2C1, p.PIN_3, p.PIN_2, Irqs, config)
         };
 
+        // let i2c = RefCell::new({
+        //     let mut config = embassy_rp::i2c::Config::default();
+        //     config.frequency = 100_000;
+        //     embassy_rp::i2c::I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, Irqs, config)
+        // });
+        
+        // let mut i2ca = rc_i2c_wrapper::RefCellDevice::new(&i2c);
+        // let mut i2cb = rc_i2c_wrapper::RefCellDevice::new(&i2c);
+
+        let mut config = embassy_rp::pwm::Config::default();
+        config.enable = false;
+        let led =
+            embassy_rp::pwm::Pwm::new_output_ab(p.PWM_SLICE7, p.PIN_14, p.PIN_15, config.clone());
+
         heartbeat::spawn(Output::new(p.PIN_25, Level::High)).ok();
-        led_dimmer::spawn(p.PWM_SLICE7, p.PIN_14, p.PIN_15).ok();
+        led_dimmer::spawn(led).ok();
         on_i2c_event::spawn(Output::new(p.PIN_16, Level::High), dev).ok();
 
         (
@@ -161,12 +230,7 @@ mod app {
     }
 
     #[task(priority = 1)]
-    async fn led_dimmer(
-        _: led_dimmer::Context,
-        slice: embassy_rp::peripherals::PWM_SLICE7,
-        pina: embassy_rp::peripherals::PIN_14,
-        pinb: embassy_rp::peripherals::PIN_15,
-    ) {
+    async fn led_dimmer(_: led_dimmer::Context, mut led: embassy_rp::pwm::Pwm<'static>) {
         let mut config = embassy_rp::pwm::Config::default();
         config.phase_correct = true;
         set_freq_duty(
@@ -176,7 +240,6 @@ mod app {
             0.25.to_fixed(),
         )
         .unwrap();
-        let mut led = embassy_rp::pwm::Pwm::new_output_ab(slice, pina, pinb, config.clone());
 
         use core::f32::consts::TAU;
 
