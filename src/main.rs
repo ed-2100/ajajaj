@@ -82,29 +82,33 @@ fn set_freq_duty(
     Ok(())
 }
 
-/// embedded-hal-bus is actually bad, so I modified the code
+/// embedded-hal-bus is actually bad, so I modified the code.
+/// This code is still bad, because it relies on runtime evaluation of ownership.
+///
+/// 'guess I'll have to cry about it.
 mod rc_i2c_wrapper {
     use core::cell::RefCell;
 
-    pub struct RefCellDevice<'a, T> {
+    pub struct RefCellI2c<'a, T> {
         bus: &'a RefCell<T>,
     }
-    
-    impl<'a, T> RefCellDevice<'a, T> {
+
+    impl<'a, T> RefCellI2c<'a, T> {
         /// Create a new `RefCellDevice`.
+        #[inline]
         pub fn new(bus: &'a RefCell<T>) -> Self {
             Self { bus }
         }
     }
-    
-    impl<'a, T> embedded_hal::i2c::ErrorType for RefCellDevice<'a, T>
+
+    impl<'a, T> embedded_hal::i2c::ErrorType for RefCellI2c<'a, T>
     where
         T: embedded_hal::i2c::I2c,
     {
         type Error = T::Error;
     }
-    
-    impl<'a, T> embedded_hal::i2c::I2c for RefCellDevice<'a, T>
+
+    impl<'a, T> embedded_hal::i2c::I2c for RefCellI2c<'a, T>
     where
         T: embedded_hal::i2c::I2c,
     {
@@ -118,7 +122,7 @@ mod rc_i2c_wrapper {
         }
     }
 
-    impl<'a, T> embedded_hal_async::i2c::I2c for RefCellDevice<'a, T>
+    impl<'a, T> embedded_hal_async::i2c::I2c for RefCellI2c<'a, T>
     where
         T: embedded_hal_async::i2c::I2c + embedded_hal::i2c::I2c,
     {
@@ -194,7 +198,7 @@ mod app {
         //     config.frequency = 100_000;
         //     embassy_rp::i2c::I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, Irqs, config)
         // });
-        
+
         // let mut i2ca = rc_i2c_wrapper::RefCellDevice::new(&i2c);
         // let mut i2cb = rc_i2c_wrapper::RefCellDevice::new(&i2c);
 
