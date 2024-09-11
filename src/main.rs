@@ -86,56 +86,7 @@ fn set_freq_duty(
 /// This code is still bad, because it relies on runtime evaluation of ownership.
 ///
 /// 'guess I'll have to cry about it.
-mod rc_i2c_wrapper {
-    use core::cell::RefCell;
-
-    pub struct RefCellI2c<'a, T> {
-        bus: &'a RefCell<T>,
-    }
-
-    impl<'a, T> RefCellI2c<'a, T> {
-        /// Create a new `RefCellDevice`.
-        #[inline]
-        pub fn new(bus: &'a RefCell<T>) -> Self {
-            Self { bus }
-        }
-    }
-
-    impl<'a, T> embedded_hal::i2c::ErrorType for RefCellI2c<'a, T>
-    where
-        T: embedded_hal::i2c::I2c,
-    {
-        type Error = T::Error;
-    }
-
-    impl<'a, T> embedded_hal::i2c::I2c for RefCellI2c<'a, T>
-    where
-        T: embedded_hal::i2c::I2c,
-    {
-        fn transaction(
-            &mut self,
-            address: u8,
-            operations: &mut [embedded_hal::i2c::Operation<'_>],
-        ) -> Result<(), Self::Error> {
-            let bus = &mut *self.bus.borrow_mut();
-            bus.transaction(address, operations)
-        }
-    }
-
-    impl<'a, T> embedded_hal_async::i2c::I2c for RefCellI2c<'a, T>
-    where
-        T: embedded_hal_async::i2c::I2c + embedded_hal::i2c::I2c,
-    {
-        async fn transaction(
-            &mut self,
-            address: u8,
-            operations: &mut [embedded_hal::i2c::Operation<'_>],
-        ) -> Result<(), Self::Error> {
-            let bus = &mut *self.bus.borrow_mut();
-            embedded_hal_async::i2c::I2c::transaction(bus, address, operations).await
-        }
-    }
-}
+mod rc_i2c_wrapper;
 
 mod pac {
     pub use embassy_rp::pac::*;

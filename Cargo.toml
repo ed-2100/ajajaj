@@ -22,13 +22,16 @@ rtic-monotonics = { version = "2", features = ["rp2040"] }
 rp2040-boot2 = "0.3"
 panic-probe = { version = "0.3" } # , features = ["print-rtt"] }
 rtt-target = "0.5"
-# embassy-sync = "0.6"
+embassy-sync = "0.6"
 # embedded-alloc = "0.5"
 # critical-section = "1"
-# portable-atomic = {version = "*", features = ["require-cas", "critical-section"]}
 embedded-hal = "1"
 embedded-hal-async = "1"
 # embedded-hal-bus = {version = "0.2", features = ["async"]}
+
+# async-lock = {version = "*", default-features = false}
+# concurrent-queue = {version = "2", default-features = false, features = ["portable-atomic"] }
+# portable-atomic = {version = "*", features = ["fallback", "require-cas", "critical-section"]}
 
 # cargo build/run
 [profile.dev]
